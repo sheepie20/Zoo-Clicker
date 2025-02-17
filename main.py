@@ -6,3 +6,5 @@ app = Flask(__name__)
 def home():
     return 'Welcome to Zoo Clicker!'
 #weird
+
+print('Good day')
