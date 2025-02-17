@@ -8,3 +8,10 @@ def home():
 #weird
 
 print('Good day')
+dog = int(input())
+if dog == (14):
+    print('14 dogs!')
+else:
+    print('f')
+
+
