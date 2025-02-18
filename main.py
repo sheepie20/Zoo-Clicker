@@ -4,4 +4,4 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return 'Welcome to Zoo Clicker!'
+    return render_template('index.html')
