@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Zoo Clicker - Game</title>
+    <style>
+        :root {
+            --bg-color: #f0f7f4;
+            --panel-bg: white;
+            --text-color: #333;
+            --shop-item-bg: #f8f9fa;
+            --shop-item-hover: #e9ecef;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --panel-bg: #2d2d2d;
+            --text-color: #e0e0e0;
+            --shop-item-bg: #3d3d3d;
+            --shop-item-hover: #4d4d4d;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .game-container {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .stats {
+            position: sticky;
+            top: 20px;
+        }
+        .shop-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: var(--shop-item-bg);
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .shop-item:hover {
+            background: var(--shop-item-hover);
+        }
+        .shop-item button {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .shop-item button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .animal-icon {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+            margin-right: 10px;
+        }
+        .shop-item-content {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+        .shop-item-info {
+            flex: 1;
+        }
+        .click-area {
+            text-align: center;
+            padding: 40px;
+        }
+        .click-button {
+            font-size: 24px;
+            padding: 20px 40px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .click-button:active {
+            transform: scale(0.95);
+        }
+        .events {
+            background: #fff3cd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .infestation {
+            color: #721c24;
+            background: #f8d7da;
+        }
+        .holiday {
+            color: #155724;
+            background: #d4edda;
+        }
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #ddd;
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #4caf50;
+            border-radius: 5px;
+            transition: width 0.3s;
+        }
+        .event-action {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()"> Toggle Theme</button>
+    <div class="game-container">
+        <div class="panel stats">
+            <h2>Zoo Stats</h2>
+            <p>Coins: <span id="coins">0</span> </p>
+            <p>Income per second: <span id="income">0</span> </p>
+            <p>Click multiplier: <span id="multiplier">1</span>x </p>
+            
+            <div id="active-events">
+                <h3>Active Events</h3>
+                <!-- Events will be displayed here -->
+            </div>
+        </div>
+
+        <div class="panel main-area">
+            <div class="click-area">
+                <button class="click-button" onclick="clickZoo()">Feed Animals</button>
+            </div>
+            
+            <div id="animals-owned">
+                <h3>Your Animals</h3>
+                <!-- Owned animals will be displayed here -->
+            </div>
+        </div>
+
+        <div class="panel shop">
+            <h2>Shop</h2>
+            
+            <h3>Animals</h3>
+            <div id="animals-shop">
+                <!-- Animal shop items will be generated here -->
+            </div>
+
+            <h3>Improvements</h3>
+            <div id="improvements-shop">
+                <!-- Improvement shop items will be generated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let gameState = {{ game_state|tojson|safe }};
+        const animals = {{ animals|tojson|safe }};
+        const improvements = {{ improvements|tojson|safe }};
+        const animalOrder = Object.entries(animals).sort((a, b) => a[1].base_cost - b[1].base_cost);
+
+        // Apply theme on load
+        if (gameState.dark_mode) {
+            document.body.setAttribute('data-theme', 'dark');
+        }
+
+        function calculateAnimalCost(basePrice, owned) {
+            return Math.floor(basePrice * Math.pow(1.15, owned));
+        }
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        async function toggleTheme() {
+            const response = await fetch('/api/toggle_theme', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+            gameState = await response.json();
+            document.body.setAttribute('data-theme', gameState.dark_mode ? 'dark' : 'light');
+        }
+
+        async function handleEventAction(event) {
+            if (event.solution.type === 'clicks') {
+                await fetch('/api/click_progress', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({event: event.name})
+                });
+            } else if (event.solution.type === 'coins') {
+                await fetch('/api/solve_event', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        event: event.name,
+                        type: 'coins'
+                    })
+                });
+            }
+            gameState = await response.json();
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            document.getElementById('coins').textContent = Math.floor(gameState.coins);
+            document.getElementById('income').textContent = gameState.income_per_second.toFixed(1);
+            document.getElementById('multiplier').textContent = gameState.multiplier.toFixed(1);
+            
+            // Update animals owned
+            const animalsOwned = document.getElementById('animals-owned');
+            let animalsHtml = '<h3>Your Animals</h3>';
+            for (const [animal, data] of animalOrder) {
+                const count = gameState.animals[animal];
+                if (count > 0) {
+                    animalsHtml += `<div class="shop-item">
+                        <div class="shop-item-content">
+                            <img src="${data.image}" alt="${animal}" class="animal-icon">
+                            <div class="shop-item-info">
+                                <span>${animal} x${count}</span><br>
+                                <span>+${(data.income * count).toFixed(1)}/s</span>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+            }
+            animalsOwned.innerHTML = animalsHtml;
+
+            // Update shop
+            const animalsShop = document.getElementById('animals-shop');
+            let shopHtml = '';
+            for (const [animal, data] of animalOrder) {
+                const owned = gameState.animals[animal];
+                const currentCost = calculateAnimalCost(data.base_cost, owned);
+                shopHtml += `<div class="shop-item">
+                    <div class="shop-item-content">
+                        <img src="${data.image}" alt="${animal}" class="animal-icon">
+                        <div class="shop-item-info">
+                            <strong>${animal}</strong><br>
+                            Cost: ${currentCost} <br>
+                            Income: +${data.income}/s<br>
+                            Owned: ${owned}
+                        </div>
+                    </div>
+                    <button onclick="buyAnimal('${animal}')" 
+                            ${gameState.coins < currentCost ? 'disabled' : ''}>
+                        Buy
+                    </button>
+                </div>`;
+            }
+            animalsShop.innerHTML = shopHtml;
+
+            // Update improvements shop
+            const improvementsShop = document.getElementById('improvements-shop');
+            let impHtml = '';
+            for (const [imp, data] of Object.entries(improvements)) {
+                impHtml += `<div class="shop-item">
+                    <div>
+                        <strong>${imp}</strong><br>
+                        Cost: ${data.cost} <br>
+                        Multiplier: x${data.multiplier}
+                    </div>
+                    <button onclick="buyImprovement('${imp}')"
+                            ${gameState.coins < data.cost ? 'disabled' : ''}>
+                        Buy
+                    </button>
+                </div>`;
+            }
+            improvementsShop.innerHTML = impHtml;
+
+            // Update events
+            const eventsDiv = document.getElementById('active-events');
+            let eventsHtml = '<h3>Active Events</h3>';
+            const currentTime = Date.now() / 1000;
+            
+            for (const event of gameState.active_events) {
+                const eventClass = event.type === 'Infestation' ? 'infestation' : 'holiday';
+                let eventHtml = `<div class="events ${eventClass}">
+                    <strong>${event.name}</strong><br>`;
+                
+                if (event.type === 'Holiday') {
+                    const timeLeft = Math.max(0, 
+                        Math.floor(event.start_time + event.duration - currentTime));
+                    eventHtml += `Effect: +${((event.bonus - 1) * 100).toFixed(0)}%<br>
+                        Time left: ${formatTime(timeLeft)}`;
+                } else {
+                    eventHtml += `Effect: -${((1 - event.penalty) * 100).toFixed(0)}%<br>
+                        ${event.solution.description}`;
+                    
+                    if (event.solution.type === 'clicks') {
+                        const progress = gameState.event_progress[event.name] || 0;
+                        const percentage = (progress / event.solution.amount) * 100;
+                        eventHtml += `
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${percentage}%"></div>
+                        </div>
+                        <div class="event-action">
+                            <button onclick="handleEventAction(${JSON.stringify(event)})">
+                                Click to Help (${progress}/${event.solution.amount})
+                            </button>
+                        </div>`;
+                    } else {
+                        eventHtml += `
+                        <div class="event-action">
+                            <button onclick="handleEventAction(${JSON.stringify(event)})"
+                                    ${gameState.coins < event.solution.amount ? 'disabled' : ''}>
+                                Pay ${event.solution.amount} coins
+                            </button>
+                        </div>`;
+                    }
+                }
+                
+                eventHtml += '</div>';
+                eventsHtml += eventHtml;
+            }
+            eventsDiv.innerHTML = eventsHtml;
+        }
+
+        async function clickZoo() {
+            const response = await fetch('/api/click', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+            gameState = await response.json();
+            updateDisplay();
+        }
+
+        async function buyAnimal(animal) {
+            const response = await fetch('/api/buy_animal', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({animal: animal})
+            });
+            gameState = await response.json();
+            updateDisplay();
+        }
+
+        async function buyImprovement(improvement) {
+            const response = await fetch('/api/buy_improvement', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({improvement: improvement})
+            });
+            gameState = await response.json();
+            updateDisplay();
+        }
+
+        async function gameTick() {
+            const response = await fetch('/api/tick', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+            gameState = await response.json();
+            updateDisplay();
+        }
+
+        // Initialize display
+        updateDisplay();
+
+        // Start game loop
+        setInterval(gameTick, 1000);
+    </script>
+</body>
+</html>
